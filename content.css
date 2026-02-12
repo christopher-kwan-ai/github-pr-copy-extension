@@ -1,0 +1,29 @@
+/* GitHub PR Copy for Slack - Minimal CSS */
+/* Most styles are inline for reliability across GitHub's dynamic UI */
+
+.ghpr-copy-button {
+  /* Base styles handled inline */
+}
+
+/* Dark mode support */
+@media (prefers-color-scheme: dark) {
+  .ghpr-copy-button {
+    color: #848d97 !important;
+  }
+  .ghpr-copy-button:hover {
+    color: #e6edf3 !important;
+    background-color: rgba(177,186,196,0.12) !important;
+  }
+}
+
+/* GitHub dark theme */
+[data-color-mode="dark"] .ghpr-copy-button,
+[data-dark-theme="dark"] .ghpr-copy-button {
+  color: #848d97 !important;
+}
+
+[data-color-mode="dark"] .ghpr-copy-button:hover,
+[data-dark-theme="dark"] .ghpr-copy-button:hover {
+  color: #e6edf3 !important;
+  background-color: rgba(177,186,196,0.12) !important;
+}
