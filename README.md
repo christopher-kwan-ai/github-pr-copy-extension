@@ -14,16 +14,22 @@ A Chrome extension that adds a convenient copy button to GitHub pull request pag
 
 ### Method 1: Load Unpacked Extension (Development)
 
-1. Open Chrome and navigate to `chrome://extensions/`
-2. Enable **Developer mode** by toggling the switch in the top-right corner
-3. Click **Load unpacked**
-4. Navigate to and select the `github-pr-copy-extension` folder
-5. The extension should now appear in your extensions list
+<img width="922" height="453" alt="image" src="https://github.com/user-attachments/assets/c8df873f-6441-44b7-b0f0-6af5b47b50b5" />
+
+1. Clone this repository
+2. Open Chrome and navigate to `chrome://extensions/`
+3. Enable **Developer mode** by toggling the switch in the top-right corner
+4. Click **Load unpacked**
+5. Navigate to and select the `github-pr-copy-extension` folder
+6. The extension should now appear in your extensions list
 
 ### Method 2: Install from ZIP
 
-1. Extract the `github-pr-copy-extension.zip` file
-2. Follow the steps above for Method 1 using the extracted folder
+<img width="922" height="439" alt="image" src="https://github.com/user-attachments/assets/005a0846-c340-49dc-82be-0471d18d040a" />
+
+1. Download this repository as a zip.
+2. Extract the `github-pr-copy-extension.zip` file
+3. Follow the steps above for Method 1 using the extracted folder
 
 ## Usage
 
