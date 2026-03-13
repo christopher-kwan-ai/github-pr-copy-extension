@@ -5,22 +5,47 @@
 
   let retryCount = 0;
   const MAX_RETRIES = 20;
+  const BUTTON_SELECTOR = '.ghpr-copy-button';
+  let observer = null;
+  let debouncedSync = null;
+  let lastUrl = window.location.href;
 
   // SVGs use 100% width/height to scale with button size
   const COPY_ICON = '<svg aria-hidden="true" focusable="false" viewBox="0 0 16 16" width="100%" height="100%" fill="currentColor"><path d="M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 0 1 0 1.5h-1.5a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-1.5a.75.75 0 0 1 1.5 0v1.5A1.75 1.75 0 0 1 9.25 16h-7.5A1.75 1.75 0 0 1 0 14.25Z"></path><path d="M5 1.75C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0 1 14.25 11h-7.5A1.75 1.75 0 0 1 5 9.25Zm1.75-.25a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-7.5a.25.25 0 0 0-.25-.25Z"></path></svg>';
   const CHECK_ICON = '<svg aria-hidden="true" viewBox="0 0 16 16" width="100%" height="100%" fill="currentColor"><path d="M13.78 4.22a.75.75 0 0 1 0 1.06l-7.25 7.25a.75.75 0 0 1-1.06 0L2.22 9.28a.75.75 0 0 1 1.06-1.06L6 10.94l6.72-6.72a.75.75 0 0 1 1.06 0Z"></path></svg>';
 
+  function isPullRequestPage() {
+    return /^\/[^/]+\/[^/]+\/pull\/\d+/.test(window.location.pathname);
+  }
+
+  function removeCopyButton() {
+    const existingButton = document.querySelector(BUTTON_SELECTOR);
+    if (existingButton) {
+      existingButton.remove();
+    }
+  }
+
   function getPRInfo() {
+    const titleElement = findPRTitleElement();
     const pageTitle = document.title;
     const match = pageTitle.match(/^(.+?) by .+? · Pull Request #(\d+)/i) ||
                   pageTitle.match(/^(.+?) · Pull Request #(\d+)/i);
 
-    let title = match ? match[1].trim() : '';
+    let title = titleElement ? titleElement.textContent.trim() : '';
     let prNumber = match ? `#${match[2]}` : '';
 
+    if (!title && match) {
+      title = match[1].trim();
+    }
+
     if (!prNumber) {
-      const urlMatch = window.location.pathname.match(/\/pull\/(\d+)/);
-      if (urlMatch) prNumber = `#${urlMatch[1]}`;
+      const prNumberElement = findPRNumberTextElement();
+      if (prNumberElement) {
+        prNumber = prNumberElement.textContent.trim();
+      } else {
+        const urlMatch = window.location.pathname.match(/\/pull\/(\d+)/);
+        if (urlMatch) prNumber = `#${urlMatch[1]}`;
+      }
     }
 
     const url = window.location.href.split('?')[0].split('#')[0];
@@ -68,47 +93,75 @@
     }
   }
 
-  function findPRNumberElement() {
-    const h1 = document.querySelector('h1[class*="PageHeader-Title"]');
-    if (h1) {
-      const span = h1.querySelector('span.f1-light') ||
-                   h1.querySelector('span[class*="fgColor-muted"]') ||
-                   h1.querySelector('span:last-child');
-      if (span) return { element: span, method: 'afterend' };
-    }
+  function findTitleHeading() {
+    return document.querySelector(
+      'h1[class*="PageHeader-Title"], h1[data-testid="issue-title"], .gh-header-title'
+    );
+  }
 
-    const oldH1 = document.querySelector('.gh-header-title');
-    if (oldH1) {
-      const span = oldH1.querySelector('span.f1-light');
-      if (span) return { element: span, method: 'afterend' };
-      return { element: oldH1, method: 'beforeend' };
+  function findPRTitleElement() {
+    const h1 = findTitleHeading();
+    if (!h1) return null;
+
+    return h1.querySelector(
+      '[data-testid="issue-title"], .js-issue-title, bdi, span[class*="Text"], span:not([class*="fgColor-muted"])'
+    ) || h1;
+  }
+
+  function findPRNumberTextElement() {
+    const h1 = findTitleHeading();
+    if (!h1) return null;
+
+    const candidates = h1.querySelectorAll('span, a, bdi, strong');
+    for (const candidate of candidates) {
+      const text = candidate.textContent.trim();
+      if (/^#\d+$/.test(text)) {
+        return candidate;
+      }
     }
     return null;
   }
 
-  function createCopyButton() {
-    if (document.querySelector('.ghpr-copy-button')) return;
+  function findInsertPoint() {
+    const h1 = findTitleHeading();
+    if (!h1) return null;
 
-    const insertPoint = findPRNumberElement();
-    if (!insertPoint) {
-      if (++retryCount < MAX_RETRIES) {
-        setTimeout(createCopyButton, Math.min(300 * Math.pow(1.3, retryCount), 3000));
-      }
-      return;
+    const numberElement = findPRNumberTextElement();
+    if (numberElement) {
+      return { element: numberElement, method: 'afterend' };
     }
 
-    retryCount = 0;
+    return { element: h1, method: 'beforeend' };
+  }
+
+  function createCopyButton() {
     const btn = document.createElement('button');
     btn.className = 'ghpr-copy-button';
     btn.type = 'button';
     btn.title = 'Copy PR link for Slack';
     btn.innerHTML = COPY_ICON;
-    // Get title styles dynamically to match formatting.
-    const h1 = document.querySelector('h1[class*="PageHeader-Title"]') || document.querySelector('.gh-header-title');
+    btn.addEventListener('mouseenter', function() {
+      this.style.color = '#24292f';
+      this.style.backgroundColor = 'rgba(208,215,222,0.32)';
+    });
+
+    btn.addEventListener('mouseleave', function() {
+      if (this.style.color !== 'rgb(26, 127, 55)') {
+        this.style.color = '#656d76';
+        this.style.backgroundColor = 'transparent';
+      }
+    });
+
+    btn.addEventListener('click', handleClick);
+    return btn;
+  }
+
+  function applyButtonStyles(btn) {
+    const h1 = findTitleHeading();
     const h1Style = h1 ? getComputedStyle(h1) : null;
     const fontSize = h1Style ? h1Style.fontSize : '20px';
     const lineHeight = h1Style ? h1Style.lineHeight : 'normal';
-    const size = Math.min(parseInt(fontSize) || 20, 20); // Cap at 20px max
+    const size = Math.min(parseInt(fontSize, 10) || 20, 20);
 
     btn.style.cssText = `
       display: inline-flex;
@@ -125,28 +178,35 @@
       cursor: pointer;
       vertical-align: baseline;
       line-height: ${lineHeight};
+      flex-shrink: 0;
     `;
+  }
 
-    btn.addEventListener('mouseenter', function() {
-      this.style.color = '#24292f';
-      this.style.backgroundColor = 'rgba(208,215,222,0.32)';
-    });
+  function syncCopyButton() {
+    if (!isPullRequestPage()) {
+      retryCount = 0;
+      removeCopyButton();
+      return;
+    }
 
-    btn.addEventListener('mouseleave', function() {
-      if (this.style.color !== 'rgb(26, 127, 55)') {
-        this.style.color = '#656d76';
-        this.style.backgroundColor = 'transparent';
+    const insertPoint = findInsertPoint();
+    if (!insertPoint) {
+      if (++retryCount < MAX_RETRIES) {
+        setTimeout(syncCopyButton, Math.min(300 * Math.pow(1.3, retryCount), 3000));
       }
-    });
+      return;
+    }
 
-    btn.addEventListener('click', handleClick);
-
+    retryCount = 0;
+    const btn = document.querySelector(BUTTON_SELECTOR) || createCopyButton();
+    applyButtonStyles(btn);
     insertPoint.element.insertAdjacentElement(insertPoint.method, btn);
   }
 
   chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     if (request.action === 'copy-pr-link') {
-      const btn = document.querySelector('.ghpr-copy-button');
+      syncCopyButton();
+      const btn = document.querySelector(BUTTON_SELECTOR);
       if (btn) {
         btn.click();
       }
@@ -155,13 +215,35 @@
   });
 
   function init() {
-    createCopyButton();
-    new MutationObserver(() => {
-      if (!document.querySelector('.ghpr-copy-button')) {
-        clearTimeout(window.ghprDebounce);
-        window.ghprDebounce = setTimeout(createCopyButton, 100);
-      }
-    }).observe(document.body, { childList: true, subtree: true });
+    debouncedSync = () => {
+      clearTimeout(window.ghprDebounce);
+      window.ghprDebounce = setTimeout(syncCopyButton, 100);
+    };
+
+    const handleLocationChange = () => {
+      const currentUrl = window.location.href;
+      if (currentUrl === lastUrl) return;
+
+      lastUrl = currentUrl;
+      retryCount = 0;
+      debouncedSync();
+    };
+
+    syncCopyButton();
+
+    if (observer) {
+      observer.disconnect();
+    }
+
+    observer = new MutationObserver(() => {
+      handleLocationChange();
+      debouncedSync();
+    });
+
+    observer.observe(document.body, { childList: true, subtree: true });
+    window.addEventListener('popstate', handleLocationChange);
+    window.addEventListener('turbo:load', handleLocationChange);
+    window.addEventListener('turbo:render', handleLocationChange);
   }
 
   if (document.readyState === 'loading') {
